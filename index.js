@@ -1,22 +1,4 @@
-async function getData(url) {
-    // https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        redirect: 'follow',
-    });
-    return response.json();
-}
-
-async function loadCountriesData() {
-    const countries = await getData('https://restcountries.com/v3.1/all?fields=name&fields=cca3&fields=area');
-    return countries.reduce((result, country) => {
-        result[country.cca3] = country;
-        return result;
-    }, {});
-}
+import { loadCountriesData, loadSomeCountriesData, getCounter, resetCounter } from '/api.js';
 
 const form = document.getElementById('form');
 const fromCountry = document.getElementById('fromCountry');
@@ -24,6 +6,102 @@ const toCountry = document.getElementById('toCountry');
 const countriesList = document.getElementById('countriesList');
 const submit = document.getElementById('submit');
 const output = document.getElementById('output');
+
+const findPaths = async (from, to, maxIteration) => {
+    const countries = [
+        {
+            data: from,
+            parent: null,
+            level: 0,
+            bordersToHandle: from.borders,
+        },
+    ];
+    let index = 0; // index for queue
+    let iteration = 0;
+    const indexes = [];
+    const handled = new Set(); // save the codes that have been handled
+
+    // function to handle borders
+    const handleBorders = async () => {
+        if (!Array.isArray(countries) || countries.length === index) {
+            throw new Error('Path not found');
+        }
+        if (iteration >= maxIteration) {
+            throw new Error('Path very long...');
+        }
+        const country = countries[index];
+        iteration = country.level + 1;
+        handled.add(country.data.cca3);
+
+        // find indexes
+        if (country.data.borders.includes(to.cca3)) {
+            indexes.push(index);
+            // find other indexes in the same level
+            for (let i = index + 1; i < countries.length; i++) {
+                if (countries[i].level !== country.level) {
+                    break;
+                }
+                if (countries[i].data.borders.includes(to.cca3)) {
+                    indexes.push(i);
+                }
+            }
+            return;
+        }
+
+        // load borders for all countries
+        try {
+            if (country.bordersToHandle.length > 0) {
+                const nextCountries = await loadSomeCountriesData(...country.bordersToHandle);
+                // delete duplicates and push to queue
+                for (const key of Object.keys(nextCountries)) {
+                    const bordersToHandle = nextCountries[key].borders.filter(
+                        (item) => !handled.has(item) && !country.data.borders.includes(item)
+                    );
+                    countries.push({
+                        data: nextCountries[key],
+                        parent: country,
+                        level: country.level + 1,
+                        bordersToHandle,
+                    });
+                }
+            }
+        } catch (error) {
+            throw new Error('Something went wrong, please update the page and try again');
+        }
+
+        // inc index of queue
+        index += 1;
+
+        // call self
+        await handleBorders();
+    };
+
+    // function to calc path
+    const calcPath = () => {
+        const result = [];
+        for (let i = 0; i < indexes.length; i++) {
+            const path = [to.name.common];
+            let country = countries[indexes[i]];
+            while (country !== null) {
+                path.push(country.data.name.common);
+                country = country.parent;
+            }
+            result.push(path);
+        }
+        return result;
+    };
+
+    const result = [];
+    await handleBorders();
+    if (indexes.length === 0) {
+        throw Error('Path not found');
+    }
+    const paths = calcPath();
+    for (let i = 0; i < paths.length; i++) {
+        result.push(paths[i].reverse().join(' -> '));
+    }
+    return result;
+};
 
 (async () => {
     fromCountry.disabled = true;
@@ -47,10 +125,57 @@ const output = document.getElementById('output');
     toCountry.disabled = false;
     submit.disabled = false;
 
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        // TODO: Вывести, откуда и куда едем, и что идёт расчёт.
-        // TODO: Рассчитать маршрут из одной страны в другую за минимум запросов.
-        // TODO: Вывести маршрут и общее количество запросов.
+
+        if (!fromCountry.value) {
+            output.textContent = 'Please fill the "From" field';
+            return;
+        }
+        if (!toCountry.value) {
+            output.textContent = 'Please fill the "To" field';
+            return;
+        }
+
+        const fromCountryValue = Object.values(countriesData).find((item) => item.name.common === fromCountry.value);
+        if (!fromCountryValue) {
+            output.textContent = 'Invalid "From" parameter, please check';
+            return;
+        }
+
+        const toCountryValue = Object.values(countriesData).find((item) => item.name.common === toCountry.value);
+        if (!toCountryValue) {
+            output.textContent = 'Invalid "To" parameter, please check';
+            return;
+        }
+
+        output.textContent = 'Calculating…';
+        fromCountry.disabled = true;
+        toCountry.disabled = true;
+        submit.disabled = true;
+
+        try {
+            const MAX_ITERATION = 10;
+            // reset counter
+            resetCounter();
+            // find path
+            const paths = await findPaths(fromCountryValue, toCountryValue, MAX_ITERATION);
+            // show result
+            output.textContent = '';
+            const requestCount = document.createElement('p');
+            requestCount.textContent = `Request count: ${getCounter()} \n `;
+            output.appendChild(requestCount);
+            for (let i = 0; i < paths.length; i++) {
+                const path = document.createElement('p');
+                path.textContent = paths[i];
+                output.appendChild(path);
+            }
+        } catch (error) {
+            output.textContent = error.message;
+        }
+
+        fromCountry.disabled = false;
+        toCountry.disabled = false;
+        submit.disabled = false;
     });
 })();
