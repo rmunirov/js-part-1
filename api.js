@@ -7,6 +7,9 @@ async function getData(url) {
         },
         redirect: 'follow',
     });
+    if (!response.ok) {
+        throw new Error('Network response was not OK');
+    }
     return response.json();
 }
 
@@ -38,16 +41,13 @@ export async function loadCountryData(code) {
     const country = await getData(
         `https://restcountries.com/v3.1/alpha/${code}?fields=name&fields=cca3&fields=area&fields=borders`
     );
-    if (country.message) {
-        throw new Error(country.message);
-    }
     cache.set(code, country);
     counter += 1;
     return country;
 }
 
-export async function loadSomeCountriesData(...codes) {
-    if (codes.length <= 0) {
+export async function loadSomeCountriesData(codes) {
+    if (!Array.isArray(codes) || codes.length <= 0) {
         throw new Error('Bad parameters passed');
     }
     const requests = codes.map((code) => loadCountryData(code));
