@@ -16,61 +16,62 @@ const findPaths = async (from, to, maxIteration) => {
             bordersToHandle: from.borders,
         },
     ];
-    let index = 0; // index for queue
     let iteration = 0;
-    const indexes = [];
+    const routes = [];
     const handled = new Set(); // save the codes that have been handled
 
     // function to handle borders
     const handleBorders = async () => {
-        if (!Array.isArray(countries) || countries.length === index) {
+        if (countries.length === 0) {
             throw new Error('Path not found');
         }
-        if (iteration >= maxIteration) {
+        if (iteration > maxIteration) {
             throw new Error('Path very long...');
         }
-        const country = countries[index];
+        const country = countries.shift();
         iteration = country.level + 1;
         handled.add(country.data.cca3);
 
-        // find indexes
+        // find countries
         if (country.data.borders.includes(to.cca3)) {
-            indexes.push(index);
-            // find other indexes in the same level
-            for (let i = index + 1; i < countries.length; i++) {
-                if (countries[i].level !== country.level) {
+            routes.push(country);
+            // find other countries in the same level
+            for (const item of countries) {
+                if (item.level !== country.level) {
                     break;
                 }
-                if (countries[i].data.borders.includes(to.cca3)) {
-                    indexes.push(i);
+                if (item.data.borders.includes(to.cca3)) {
+                    routes.push(item);
                 }
             }
             return;
         }
 
-        // load borders for all countries
+        // if not find load borders for all countries
         try {
-            if (country.bordersToHandle.length > 0) {
-                const nextCountries = await loadSomeCountriesData(...country.bordersToHandle);
-                // delete duplicates and push to queue
-                for (const key of Object.keys(nextCountries)) {
+            const nextCountries = await loadSomeCountriesData(country.bordersToHandle);
+            // delete duplicates and push to queue
+            for (const key of Object.keys(nextCountries)) {
+                if (
+                    !countries.find((item) => item.data.cca3 === nextCountries[key].cca3) ||
+                    !handled.has(nextCountries[key].cca3)
+                ) {
                     const bordersToHandle = nextCountries[key].borders.filter(
                         (item) => !handled.has(item) && !country.data.borders.includes(item)
                     );
-                    countries.push({
-                        data: nextCountries[key],
-                        parent: country,
-                        level: country.level + 1,
-                        bordersToHandle,
-                    });
+                    if (bordersToHandle.length > 0) {
+                        countries.push({
+                            data: nextCountries[key],
+                            parent: country,
+                            level: country.level + 1,
+                            bordersToHandle,
+                        });
+                    }
                 }
             }
         } catch (error) {
             throw new Error('Something went wrong, please update the page and try again');
         }
-
-        // inc index of queue
-        index += 1;
 
         // call self
         await handleBorders();
@@ -79,9 +80,9 @@ const findPaths = async (from, to, maxIteration) => {
     // function to calc path
     const calcPath = () => {
         const result = [];
-        for (let i = 0; i < indexes.length; i++) {
+        for (const item of routes) {
             const path = [to.name.common];
-            let country = countries[indexes[i]];
+            let country = item;
             while (country !== null) {
                 path.push(country.data.name.common);
                 country = country.parent;
@@ -93,7 +94,7 @@ const findPaths = async (from, to, maxIteration) => {
 
     const result = [];
     await handleBorders();
-    if (indexes.length === 0) {
+    if (routes.length === 0) {
         throw Error('Path not found');
     }
     const paths = calcPath();
