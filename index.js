@@ -7,6 +7,7 @@ const countriesList = document.getElementById('countriesList');
 const submit = document.getElementById('submit');
 const output = document.getElementById('output');
 
+// eslint-disable-next-line no-unused-vars
 const findPaths = async (from, to, maxIteration) => {
     const countries = [
         {
@@ -104,6 +105,58 @@ const findPaths = async (from, to, maxIteration) => {
     return result;
 };
 
+async function findRoute(from, to) {
+    if (from.borders.length === 0) {
+        throw new Error('Path not found');
+    }
+    try {
+        const queue = [from];
+        const visited = new Set();
+        visited.add(from.cca3);
+        const parents = new Map();
+        parents.set(from.cca3, null);
+
+        while (queue.length > 0) {
+            const country = queue.shift();
+
+            if (country.borders.length > 0) {
+                if (country.borders.includes(to.cca3)) {
+                    parents.set(to.cca3, country);
+                    break;
+                }
+
+                // eslint-disable-next-line no-await-in-loop
+                const borders = await loadSomeCountriesData(country.borders);
+
+                for (const border of Object.keys(borders)) {
+                    if (!visited.has(border)) {
+                        visited.add(border);
+                        queue.push(borders[border]);
+                        parents.set(border, country);
+                    }
+                }
+            }
+        }
+
+        if (!parents.has(to.cca3)) {
+            throw new Error('Path not found');
+        }
+
+        const result = [];
+        let parent = parents.get(to.cca3);
+        const path = [to.name.common];
+        while (parent !== null) {
+            path.push(parent.name.common);
+            parent = parents.get(parent.cca3);
+        }
+        result.push(path.reverse().join(' -> '));
+
+        return result;
+    } catch (error) {
+        throw error;
+    }
+}
+
 (async () => {
     fromCountry.disabled = true;
     toCountry.disabled = true;
@@ -160,7 +213,8 @@ const findPaths = async (from, to, maxIteration) => {
             // reset counter
             resetCounter();
             // find path
-            const paths = await findPaths(fromCountryValue, toCountryValue, MAX_ITERATION);
+            // const paths = await findPaths(fromCountryValue, toCountryValue, MAX_ITERATION);
+            const paths = await findRoute(fromCountryValue, toCountryValue, MAX_ITERATION);
             // show result
             output.textContent = '';
             const requestCount = document.createElement('p');
