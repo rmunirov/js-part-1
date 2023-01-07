@@ -1,4 +1,5 @@
 import { loadCountriesData, loadSomeCountriesData, getCounter, resetCounter } from '/api.js';
+import Maps from '/maps.js';
 
 const form = document.getElementById('form');
 const fromCountry = document.getElementById('fromCountry');
@@ -113,6 +114,7 @@ async function findRoute(from, to) {
         throw new Error('Please, enter different countries');
     }
     try {
+        Maps.setEndPoints(from.cca3, to.cca3);
         const queue = [from];
         const visited = new Set();
         visited.add(from.cca3);
@@ -136,6 +138,7 @@ async function findRoute(from, to) {
                         visited.add(border);
                         queue.push(borders[border]);
                         parents.set(border, country);
+                        Maps.markAsVisited([border]);
                     }
                 }
             }
