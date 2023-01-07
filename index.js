@@ -109,6 +109,9 @@ async function findRoute(from, to) {
     if (from.borders.length === 0) {
         throw new Error('Path not found');
     }
+    if (from === to) {
+        throw new Error('Please, enter different countries');
+    }
     try {
         const queue = [from];
         const visited = new Set();
